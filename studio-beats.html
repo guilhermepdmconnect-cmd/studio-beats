@@ -410,7 +410,8 @@ async function initApp() {
   goTo('beats');
 }
 
-function isProdutor(){ return currentProfile && currentProfile.role==='produtor'; }
+function isProdutor(){ return currentProfile && (currentProfile.role==='produtor'||currentProfile.role==='master'); }
+function isMaster(){ return currentProfile && currentProfile.role==='master'; }
 
 // ── DATA ────────────────────────────────────────────────
 async function loadBeats()   { try { beats    = await sb('/rest/v1/beats?order=created_at.desc'); } catch(e){ beats=[];    } }
@@ -422,11 +423,15 @@ function hideLoading()   { document.getElementById('loading').classList.add('hid
 
 // ── NAV ─────────────────────────────────────────────────
 function navItems() {
+  if(isMaster()) return [
+    {id:'beats',   icon:'ti-music',        label:'Beats',    badge:beats.length},
+    {id:'upload',  icon:'ti-cloud-upload', label:'Novo beat',badge:null},
+    {id:'members', icon:'ti-users',        label:'Membros',  badge:profiles.length},
+    {id:'settings',icon:'ti-settings',    label:'Config.',  badge:null},
+  ];
   if(isProdutor()) return [
-    {id:'beats', icon:'ti-music',        label:'Beats',    badge:beats.length},
-    {id:'upload',icon:'ti-cloud-upload', label:'Novo beat',badge:null},
-    {id:'members',icon:'ti-users',       label:'Membros',  badge:profiles.length},
-    {id:'settings',icon:'ti-settings',  label:'Config.',  badge:null},
+    {id:'beats',  icon:'ti-music',        label:'Beats',    badge:beats.length},
+    {id:'upload', icon:'ti-cloud-upload', label:'Novo beat',badge:null},
   ];
   return [{id:'beats',icon:'ti-music',label:'Explorar beats',badge:beats.length}];
 }
@@ -456,7 +461,7 @@ function renderContent() {
   if(currentPage==='beats')    { el.innerHTML=beatsHTML(); }
   if(currentPage==='upload')   { el.innerHTML=uploadHTML(); bindUpload(); }
   if(currentPage==='members')  { el.innerHTML=membersHTML(); }
-  if(currentPage==='settings') { el.innerHTML=settingsHTML(); }
+  if(currentPage==='settings'&&isMaster()) { el.innerHTML=settingsHTML(); }
 }
 
 // ── BEATS ────────────────────────────────────────────────
@@ -619,9 +624,10 @@ function settingsHTML(){
           <div><div class="member-name">${m.name}</div><div class="member-role-txt" style="font-size:10px;color:var(--text3)">${m.id}</div></div>
         </div>
         <div class="member-right">
-          <select class="role-select" onchange="changeRole('${m.id}',this.value)">
+          <select class="role-select" onchange="changeRole('${m.id}',this.value)" ${m.role==='master'?'disabled':''}>
             <option value="artista" ${m.role==='artista'?'selected':''}>Artista</option>
             <option value="produtor" ${m.role==='produtor'?'selected':''}>Produtor</option>
+            <option value="master" ${m.role==='master'?'selected':''}>Produtor Mestre</option>
           </select>
         </div>
       </div>`;}).join('')}
