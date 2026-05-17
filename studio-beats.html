@@ -350,6 +350,8 @@ async function login() {
     const data = await sbAuth('/token?grant_type=password',{email,password:pass});
     accessToken = data.access_token;
     currentUser = data.user;
+    localStorage.setItem('sb_token', data.access_token);
+    localStorage.setItem('sb_refresh', data.refresh_token);
     await loadProfile();
     await initApp();
   } catch(e) {
@@ -391,6 +393,8 @@ async function logout() {
   try { await sbAuth('/logout',{}); } catch(e){}
   stopAudio();
   accessToken=null; currentUser=null; currentProfile=null;
+  localStorage.removeItem('sb_token');
+  localStorage.removeItem('sb_refresh');
   document.getElementById('app').classList.add('hidden');
   document.getElementById('auth').classList.remove('hidden');
   showView('login');
@@ -683,7 +687,36 @@ let toastT;
 function showToast(msg,type='success'){ const t=document.getElementById('toast'); t.innerHTML=`<i class="ti ${type==='success'?'ti-circle-check':'ti-alert-circle'}"></i>${msg}`; t.className=`toast ${type} show`; clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),3000); }
 
 // ── INIT ────────────────────────────────────────────────
-window.addEventListener('load',()=>{ hideLoading(); document.getElementById('auth').classList.remove('hidden'); showView('login'); });
+window.addEventListener('load', async () => {
+  const token = localStorage.getItem('sb_token');
+  const refresh = localStorage.getItem('sb_refresh');
+  if (token) {
+    try {
+      // Try to restore session using refresh token
+      const r = await fetch(SB_URL + '/auth/v1/token?grant_type=refresh_token', {
+        method: 'POST',
+        headers: {'apikey': SB_KEY, 'Content-Type': 'application/json'},
+        body: JSON.stringify({refresh_token: refresh})
+      });
+      if (r.ok) {
+        const data = await r.json();
+        accessToken = data.access_token;
+        currentUser = data.user;
+        localStorage.setItem('sb_token', data.access_token);
+        localStorage.setItem('sb_refresh', data.refresh_token);
+        await loadProfile();
+        hideLoading();
+        await initApp();
+        return;
+      }
+    } catch(e) {}
+    localStorage.removeItem('sb_token');
+    localStorage.removeItem('sb_refresh');
+  }
+  hideLoading();
+  document.getElementById('auth').classList.remove('hidden');
+  showView('login');
+});
 </script>
 </body>
 </html>
