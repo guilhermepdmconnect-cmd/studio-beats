@@ -556,7 +556,7 @@ function beatCardHTML(b){
         <div class="beat-actions">
           <button class="icon-btn fav${isFav?' on':''}" onclick="toggleFav('${b.id}')" title="Favoritar"><i class="ti ${isFav?'ti-heart-filled':'ti-heart'}"></i></button>
           <button class="icon-btn" onclick="openDetail('${b.id}')" title="Ver detalhes"><i class="ti ti-info-circle"></i></button>
-          ${b.file_url?`<a class="icon-btn" href="${b.file_url}" download title="Download"><i class="ti ti-download"></i></a>`:''}
+          ${b.file_url?`<button class="icon-btn" onclick="downloadBeat(this.dataset.url,this.dataset.name)" data-url="${b.file_url}" data-name="${b.name}" title="Download"><i class="ti ti-download"></i></button>`:''}
           ${isP?`<button class="icon-btn danger" onclick="confirmDelete('${b.id}','${nm}')" title="Excluir"><i class="ti ti-trash"></i></button>`:''}
         </div>
       </div>
@@ -648,7 +648,7 @@ async function openDetail(beatId){
           </div>
           <div class="beat-detail-actions">
             <button class="btn btn-primary" onclick="playBeat('${b.id}','${url}','${nm}','${mt}','${coverUrl}')"><i class="ti ti-player-play"></i>Ouvir</button>
-            ${b.file_url?`<a class="btn" href="${b.file_url}" download><i class="ti ti-download"></i>Download</a>`:''}
+            ${b.file_url?`<button class="btn" onclick="downloadBeat(this.dataset.url,this.dataset.name)" data-url="${b.file_url}" data-name="${b.name}"><i class="ti ti-download"></i>Download</button>`:''}
             <button class="btn${isFav?' btn-primary':''}" onclick="toggleFav('${b.id}');closeModal()"><i class="ti ${isFav?'ti-heart-filled':'ti-heart'}"></i>${isFav?'Salvo':'Favoritar'}</button>
           </div>
         </div>
@@ -880,6 +880,25 @@ function showModal(html){document.getElementById('modal-box').innerHTML=html;doc
 function closeModal(){document.getElementById('modal').classList.remove('open');}
 let toastT;
 function showToast(msg,type='success'){const t=document.getElementById('toast');t.innerHTML=`<i class="ti ${type==='success'?'ti-circle-check':'ti-alert-circle'}"></i>${msg}`;t.className=`toast ${type} show`;clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),3000);}
+
+// ── DOWNLOAD ─────────────────────────────────────────
+async function downloadBeat(url, name) {
+  try {
+    showToast('Baixando...', 'success');
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const ext = url.split('.').pop().split('?')[0] || 'mp3';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name + '.' + ext;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  } catch(e) {
+    showToast('Erro ao baixar.', 'error');
+  }
+}
 
 // ── INIT ─────────────────────────────────────────────────
 window.addEventListener('load',async()=>{
