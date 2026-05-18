@@ -342,7 +342,7 @@ const SCALES=['Dó maior','Ré menor','Mi menor','Fá maior','Sol maior','Lá me
 const MOODS=['Feliz','Triste','Melancólico','Neutro','Agitado','Intenso'];
 const BPMS=['Lento (60–90)','Médio (90–120)','Rápido (120–150)','Muito rápido (150+)'];
 
-let beats=[],profiles=[],favorites=new Set(),albums=[],announcements=[],activities=[];
+let beats=[],profiles=[],favorites=new Set(),albums=[],announcements=[],activities=[],beatAccess={};
 const SEL={style:new Set(),mood:new Set(),bpm:new Set()};
 let currentUser=null,currentProfile=null,currentPage='',playingId=null;
 let selectedFile=null,selectedCover=null,selectedMood='',accessToken=null;
@@ -438,6 +438,7 @@ async function initApp(){
   else if(isProdutor()){await loadProfiles();}
   else{await loadAnnouncements();}
   await loadAlbums();
+  await loadBeatAccess();
   hideLoading();
   document.getElementById('auth').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
@@ -456,6 +457,17 @@ async function loadFavorites(){try{const r=await sb(`/rest/v1/favorites?user_id=
 async function loadActivities(){try{activities=await sb('/rest/v1/activities?order=created_at.desc&limit=30');}catch(e){activities=[];}}
 async function loadAnnouncements(){try{announcements=await sb('/rest/v1/announcements?order=created_at.desc');}catch(e){announcements=[];}}
 async function loadAlbums(){try{albums=await sb('/rest/v1/albums?order=created_at.asc');}catch(e){albums=[];}}
+async function loadBeatAccess(){
+  try{
+    const r=await sb('/rest/v1/beat_access?select=beat_id,user_id');
+    beatAccess={};
+    r.forEach(x=>{
+      if(!beatAccess[x.beat_id])beatAccess[x.beat_id]=[];
+      beatAccess[x.beat_id].push(x.user_id);
+    });
+  }catch(e){beatAccess={};}
+}
+
 async function loadComments(beatId){try{return await sb(`/rest/v1/comments?beat_id=eq.${beatId}&order=created_at.asc`);}catch(e){return[];}}
 async function loadLyrics(beatId){try{const r=await sb(`/rest/v1/lyrics?beat_id=eq.${beatId}&user_id=eq.${currentUser.id}`);return r[0]||null;}catch(e){return null;}}
 async function loadAllLyrics(beatId){try{return await sb(`/rest/v1/lyrics?beat_id=eq.${beatId}&order=created_at.asc`);}catch(e){return[];}}
@@ -694,7 +706,13 @@ async function loadLyricsForBeat(beatId){
 
 // ── BEATS PAGE ─────────────────────────────────────────
 function inBpm(bpm,r){if(r==='Lento (60–90)')return bpm>=60&&bpm<90;if(r==='Médio (90–120)')return bpm>=90&&bpm<120;if(r==='Rápido (120–150)')return bpm>=120&&bpm<150;if(r==='Muito rápido (150+)')return bpm>=150;return true;}
-function getFiltered(){return beats.filter(b=>!b.archived&&(SEL.style.size===0||SEL.style.has(b.style))&&(SEL.mood.size===0||SEL.mood.has(b.mood))&&(SEL.bpm.size===0||[...SEL.bpm].some(r=>inBpm(b.bpm,r))));}
+function canSeeBeat(b){
+  if(!b.exclusive)return true;
+  if(isProdutor())return true;
+  const allowed=beatAccess[b.id]||[];
+  return allowed.includes(currentUser.id);
+}
+function getFiltered(){return beats.filter(b=>!b.archived&&canSeeBeat(b)&&(SEL.style.size===0||SEL.style.has(b.style))&&(SEL.mood.size===0||SEL.mood.has(b.mood))&&(SEL.bpm.size===0||[...SEL.bpm].some(r=>inBpm(b.bpm,r))));}  
 function waveHTML(on){const h=[12,22,32,18,36,26,42,16,30,22,36,14,28,22,42,18,32,24];return h.map((v,i)=>{const bg=on?(i%3===0?'var(--accent)':'var(--accent-bg)'):'var(--border)';return`<div class="wb" style="height:${v}px;background:${bg}"></div>`;}).join('');}
 function toggleChip(type,val){SEL[type].has(val)?SEL[type].delete(val):SEL[type].add(val);document.getElementById('content').innerHTML=beatsHTML();}
 function clearFilters(){SEL.style.clear();SEL.mood.clear();SEL.bpm.clear();goTo('beats');}
@@ -784,6 +802,17 @@ async function toggleArchive(id,isArchived){
 }
 
 // ── EDIT BEAT ──────────────────────────────────────────
+function buildArtistCheckboxes(beatId){
+  const artistas=profiles.filter(p=>p.role==='artista');
+  if(artistas.length===0)return '<div style="font-size:12px;color:var(--text3)">Nenhum artista cadastrado ainda.</div>';
+  const allowed=beatAccess[beatId]||[];
+  return artistas.map(p=>`
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer">
+      <input type="checkbox" value="${p.id}" ${allowed.includes(p.id)?'checked':''}/>
+      ${p.name}
+    </label>`).join('');
+}
+
 function showEditBeat(id){
   const b=beats.find(x=>x.id===id);if(!b)return;
   editingBeat=id;
@@ -798,15 +827,28 @@ function showEditBeat(id){
     <div class="form-group" style="margin-bottom:12px"><label class="form-label">Mood</label>
       <div class="mood-grid">${MOODS.map(m=>`<button class="mood-opt${m===b.mood?' on':''}" onclick="this.closest('.mood-grid').querySelectorAll('.mood-opt').forEach(x=>x.classList.remove('on'));this.classList.add('on')">${m}</button>`).join('')}</div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <input type="checkbox" id="ed-excl" ${b.exclusive?'checked':''}/>
-      <label for="ed-excl" style="font-size:13px;color:var(--text2)">Beat exclusivo 🔒</label>
+    <div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <input type="checkbox" id="ed-excl" ${b.exclusive?'checked':''} onchange="toggleExclSection(this.checked)"/>
+        <label for="ed-excl" style="font-size:13px;color:var(--text2)">Beat exclusivo 🔒</label>
+      </div>
+      <div id="excl-section" style="display:${b.exclusive?'block':'none'}">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Artistas com acesso:</div>
+        <div id="excl-artists" style="display:flex;flex-direction:column;gap:6px">
+          ${buildArtistCheckboxes(b.id)}
+        </div>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="saveEditBeat()"><i class="ti ti-check"></i>Salvar</button>
-    </div>`);
+    </div>\`);
 }
+function toggleExclSection(checked){
+  const el=document.getElementById('excl-section');
+  if(el)el.style.display=checked?'block':'none';
+}
+
 async function saveEditBeat(){
   const name=document.getElementById('ed-name').value.trim();
   const bpm=parseInt(document.getElementById('ed-bpm').value);
@@ -820,15 +862,27 @@ async function saveEditBeat(){
   try{
     const patch={name,bpm,style,scale:scale||null,exclusive,album_id};
     if(mood)patch.mood=mood;
-    await sb(`/rest/v1/beats?id=eq.${editingBeat}`,{method:'PATCH',body:JSON.stringify(patch)});
+    await sb('/rest/v1/beats?id=eq.'+editingBeat,{method:'PATCH',body:JSON.stringify(patch)});
     const b=beats.find(x=>x.id===editingBeat);if(b)Object.assign(b,patch);
+    if(exclusive){
+      const checkboxes=document.querySelectorAll('#excl-artists input[type=checkbox]');
+      const selectedIds=[...checkboxes].filter(c=>c.checked).map(c=>c.value);
+      await sb('/rest/v1/beat_access?beat_id=eq.'+editingBeat,{method:'DELETE'});
+      if(selectedIds.length>0){
+        await sb('/rest/v1/beat_access',{method:'POST',body:JSON.stringify(selectedIds.map(uid=>({beat_id:editingBeat,user_id:uid})))});
+      }
+      beatAccess[editingBeat]=selectedIds;
+    }else{
+      await sb('/rest/v1/beat_access?beat_id=eq.'+editingBeat,{method:'DELETE'});
+      beatAccess[editingBeat]=[];
+    }
     closeModal();renderContent();showToast('Beat atualizado!','success');
   }catch(e){showToast('Erro ao salvar.','error');}
 }
 
 // ── DELETE ─────────────────────────────────────────────
-function confirmDelete(id,name){showModal(`<div class="modal-title">Excluir beat</div><div class="modal-sub">Excluir <b>${name}</b>? Esta ação não pode ser desfeita.</div><div class="modal-actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" onclick="deleteBeat('${id}')"><i class="ti ti-trash"></i>Excluir</button></div>`);}
-async function deleteBeat(id){closeModal();showLoading('Excluindo...');try{await sb(`/rest/v1/beats?id=eq.${id}`,{method:'DELETE'});beats=beats.filter(b=>b.id!==id);if(playingId===id)stopAudio();showToast('Beat excluído.','success');}catch(e){showToast('Erro.','error');}hideLoading();goTo('beats');}
+function confirmDelete(id,name){var html='<div class="modal-title">Excluir beat</div><div class="modal-sub">Excluir <b>'+name+'</b>? Esta acao nao pode ser desfeita.</div><div class="modal-actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" onclick="deleteBeat(\"'+id+'\")"><i class="ti ti-trash"></i>Excluir</button></div>';showModal(html);}
+async function deleteBeat(id){closeModal();showLoading('Excluindo...');try{await sb('/rest/v1/beats?id=eq.'+id,{method:'DELETE'});beats=beats.filter(b=>b.id!==id);if(playingId===id)stopAudio();showToast('Beat excluído.','success');}catch(e){showToast('Erro.','error');}hideLoading();goTo('beats');}
 
 // ── BEAT DETAIL ────────────────────────────────────────
 async function openDetail(beatId){
@@ -985,19 +1039,22 @@ function membersHTML(){
   const colors=[['#1a1830','#a89cf7'],['#0d2a1a','#4ade80'],['#2a1f0a','#fbbf24'],['#1a1a2e','#8888cc'],['#1a0d0d','#f87171']];
   const roleLabel=r=>r==='master'?'👑 Mestre':r==='produtor'?'Produtor':'Artista';
   const roleClass=r=>r==='master'?'status-master':r==='produtor'?'status-produtor':'status-artista';
-  return`<div class="members-list">
-    ${profiles.map((m,i)=>{const[bg,tc]=colors[i%colors.length];return`
-    <div class="member-card">
-      <div class="member-info">
-        <div class="member-av" style="background:${bg};color:${tc}">${m.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}</div>
-        <div><div class="member-name">${m.name}</div><div class="member-role-txt">${roleLabel(m.role)}</div></div>
-      </div>
-      <div class="member-right">
-        <span class="status-badge ${m.active===false?'status-inactive':roleClass(m.role)}">${m.active===false?'Inativo':roleLabel(m.role)}</span>
-      </div>
-    </div>`;}).join('')}
-    ${profiles.length===0?'<div class="empty-state"><i class="ti ti-users"></i><p>Nenhum membro ainda</p></div>':''}
-  </div>`;
+  const cards=profiles.map((m,i)=>{
+    const[bg,tc]=colors[i%colors.length];
+    const ini=m.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const badgeClass=m.active===false?'status-inactive':roleClass(m.role);
+    const badgeTxt=m.active===false?'Inativo':roleLabel(m.role);
+    return '<div class="member-card">'+
+      '<div class="member-info">'+
+      '<div class="member-av" style="background:'+bg+';color:'+tc+'">'+ini+'</div>'+
+      '<div><div class="member-name">'+m.name+'</div><div class="member-role-txt">'+roleLabel(m.role)+'</div></div>'+
+      '</div>'+
+      '<div class="member-right">'+
+      '<span class="status-badge '+badgeClass+'">'+badgeTxt+'</span>'+
+      '</div></div>';
+  }).join('');
+  const empty=profiles.length===0?'<div class="empty-state"><i class="ti ti-users"></i><p>Nenhum membro ainda</p></div>':'';
+  return'<div class="members-list">'+cards+empty+'</div>';
 }
 
 // ── SETTINGS ───────────────────────────────────────────
