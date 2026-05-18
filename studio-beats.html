@@ -580,10 +580,22 @@ function beatsHTML(){
   const cards=list.length===0
     ?`<div class="empty-state"><i class="ti ti-music-off"></i><p>Nenhum beat encontrado</p><small>${beats.length===0?'Adicione o primeiro beat!':'Tente outros filtros'}</small></div>`
     :list.map(b=>beatCardHTML(b)).join('');
+  // Favorites section for artistas
+  const favBeats = beats.filter(b=>favorites.has(b.id));
+  const favsSection = !isProdutor() && favBeats.length>0 ? `
+    <div style="margin-top:28px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <div style="font-size:11px;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;font-family:var(--mono)">Beats Favoritos</div>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <span style="font-size:11px;color:var(--text3);font-family:var(--mono)">${favBeats.length} beat${favBeats.length>1?'s':''}</span>
+      </div>
+      <div class="beats-grid">${favBeats.map(b=>beatCardHTML(b)).join('')}</div>
+    </div>` : '';
+
   return filterBar+`<div class="results-bar">
     <span class="results-count"><b>${list.length}</b> de ${beats.length} beats</span>
     <select class="sort-sel" onchange="sortBeats(this.value)"><option value="date">Mais recentes</option><option value="bpm_asc">BPM crescente</option><option value="bpm_desc">BPM decrescente</option><option value="az">A – Z</option></select>
-    </div><div class="beats-grid">${cards}</div>`;
+    </div><div class="beats-grid">${cards}</div>` + favsSection;
 }
 
 function favsHTML(){
